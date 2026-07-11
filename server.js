@@ -6,7 +6,7 @@ import express from "express";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
-import fetch from "node-fetch";
+import axios from "axios";
 
 dotenv.config();
 
@@ -24,26 +24,24 @@ if (!LUSHA_API_KEY) {
   );
 }
 
-// Global helper for Lusha fetch calls
+// Global helper for Lusha API calls using Axios
 async function lushaFetch(endpoint, body) {
-  const res = await fetch(`${LUSHA_BASE}${endpoint}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      api_key: LUSHA_API_KEY,
-    },
-    body: JSON.stringify(body),
-  });
-
-  const data = await res.json().catch(() => ({}));
-
-  if (!res.ok) {
-    const err = new Error(data?.message || `Lusha request failed (${res.status})`);
-    err.status = res.status;
+  try {
+    const response = await axios.post(`${LUSHA_BASE}${endpoint}`, body, {
+      headers: {
+        "Content-Type": "application/json",
+        api_key: LUSHA_API_KEY,
+      },
+    });
+    return response.data;
+  } catch (error) {
+    const status = error.response?.status || 500;
+    const data = error.response?.data || {};
+    const err = new Error(data?.message || `Lusha request failed (${status})`);
+    err.status = status;
     err.details = data;
     throw err;
   }
-  return data;
 }
 
 // ---------------------------------------------------------------------
