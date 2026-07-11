@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Lead Finder — Echoooo</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="logo">lead<span class="logo-o">OOO</span></div>
+      <div class="logo-tag">by echoooo</div>
+    </div>
+    <p class="subtitle">Find brands → find their marketing contact → send a WhatsApp cold message</p>
+  </header>
+
+  <main>
+    <!-- STEP 1: Search -->
+    <section class="card" id="search-card">
+      <div class="card-head"><span class="step-badge">1</span><h2>Search companies</h2></div>
+      <form id="search-form" class="grid">
+        <label>
+          Country
+          <select id="country" required>
+            <option value="">Select…</option>
+            <optgroup label="GCC">
+              <option value="Kuwait">Kuwait</option>
+              <option value="Saudi Arabia">Saudi Arabia</option>
+              <option value="United Arab Emirates">United Arab Emirates</option>
+              <option value="Qatar">Qatar</option>
+              <option value="Bahrain">Bahrain</option>
+              <option value="Oman">Oman</option>
+            </optgroup>
+            <optgroup label="Wider Middle East">
+              <option value="Egypt">Egypt</option>
+              <option value="Jordan">Jordan</option>
+              <option value="Lebanon">Lebanon</option>
+              <option value="Iraq">Iraq</option>
+              <option value="Morocco">Morocco</option>
+              <option value="Turkey">Turkey</option>
+            </optgroup>
+          </select>
+        </label>
+
+        <label>
+          Business type
+          <select id="industry" required>
+            <option value="">Select…</option>
+            <option value="Food & Beverage">F&B</option>
+            <option value="Retail">Retail</option>
+            <option value="FMCG">FMCG</option>
+            <option value="Beauty & Cosmetics">Beauty & Cosmetics</option>
+            <option value="Fashion & Apparel">Fashion & Apparel</option>
+            <option value="Hospitality & Travel">Hospitality & Travel</option>
+            <option value="Health & Wellness">Health & Wellness</option>
+            <option value="Real Estate">Real Estate</option>
+            <option value="Automotive">Automotive</option>
+            <option value="Technology">Technology</option>
+            <option value="Education">Education</option>
+            <option value="Entertainment & Events">Entertainment & Events</option>
+            <option value="Home & Furniture">Home & Furniture</option>
+            <option value="Financial Services">Financial Services</option>
+          </select>
+        </label>
+
+        <label>
+          Company size
+          <select id="size">
+            <option value="1-10">1–10 employees</option>
+            <option value="11-50">11–50 employees</option>
+            <option value="51-100" selected>51–100 employees</option>
+            <option value="101-200">101–200 employees</option>
+            <option value="201-500">201–500 employees</option>
+            <option value="501-1000">501–1000 employees</option>
+            <option value="1001-">1000+ employees</option>
+          </select>
+        </label>
+
+        <button type="submit" id="search-btn">Search</button>
+      </form>
+      <p class="hint">Each search pulls up to 10 companies to keep credit usage light.</p>
+      <div id="search-status"></div>
+    </section>
+
+    <!-- STEP 2: Results -->
+    <section class="card" id="results-card" hidden>
+      <div class="card-head"><span class="step-badge">2</span><h2>Select companies</h2></div>
+      <div id="results-list"></div>
+      <button id="find-contacts-btn">Find marketing contacts for selected →</button>
+      <div id="contacts-status"></div>
+    </section>
+
+    <!-- STEP 3: Contacts + message -->
+    <section class="card" id="contacts-card" hidden>
+      <div class="card-head"><span class="step-badge">3</span><h2>Review contacts</h2></div>
+      <div id="contacts-list"></div>
+    </section>
+
+    <!-- STEP 4: Message template -->
+    <section class="card" id="template-card">
+      <div class="card-head"><span class="step-badge">4</span><h2>Your WhatsApp message</h2></div>
+      <p class="hint">
+        This is saved on this device only — each rep writes their own.
+        Use <code>{company_name}</code>, <code>{contact_first_name}</code> and
+        <code>{contact_title}</code> — they'll be swapped in automatically per contact.
+      </p>
+      <textarea id="template" rows="6" placeholder="Hi {contact_first_name}, I'm [Your name] from Echoooo. I noticed {company_name} might be a great fit for an influencer campaign we're running in [market]. Would you be open to a quick chat this week?"></textarea>
+      <button id="save-template-btn">Save message</button>
+      <span id="template-saved-msg" class="saved-msg"></span>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
