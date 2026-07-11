@@ -1,7 +1,6 @@
 // server.js
 // Lead-gen backend for FOMO Global Marketing / Echoooo sales team.
-// Holds the ONE shared Lusha API key server-side so reps never see it or
-// need their own key. All Lusha calls go through this server.
+// Holds the ONE shared Lusha API key server-side so reps never see it.
 
 import express from "express";
 import dotenv from "dotenv";
@@ -13,17 +12,18 @@ dotenv.config();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static(path.join(__dirname, \"public\")));
 
 const LUSHA_API_KEY = process.env.LUSHA_API_KEY;
 const LUSHA_BASE = "https://api.lusha.com";
 
 if (!LUSHA_API_KEY) {
   console.warn(
-    "⚠️  LUSHA_API_KEY is not set. Add it to a .env file (see .env.example) before using search."
+    "⚠️ LUSHA_API_KEY is not set. Add it to a .env file before running."
   );
 }
 
+// Global helper for Lusha fetch calls
 async function lushaFetch(endpoint, body) {
   const res = await fetch(`${LUSHA_BASE}${endpoint}`, {
     method: "POST",
@@ -45,54 +45,56 @@ async function lushaFetch(endpoint, body) {
   return data;
 }
 
-// Titles we consider "responsible for influencer/social/brand marketing".
-// Edit this list any time — it's just a client-side-ish keyword filter
-// applied to whatever Lusha's Decision Makers endpoint returns.
-const MARKETING_TITLE_KEYWORDS = [
-  "influencer",
-  "social media",
-  "brand",
-  "marketing",
-  "digital marketing",
-  "communications",
-  "pr ",
-  "growth",
-];
-
 // ---------------------------------------------------------------------
-// 1. Search companies by country / industry / employee size
+// 1. Search Companies via V3 Prospecting API
 // ---------------------------------------------------------------------
 app.post("/api/search-companies", async (req, res) => {
-  const { country, industry, minSize, maxSize, page = 0, pageSize = 10 } = req.body;
+  const { country, industry, minSize, maxSize } = req.body;
 
-  if (!country || !industry) {
-    return res.status(400).json({ error: "country and industry are required" });
+  // Build compliant V3 structure
+  const companyInclude = {};
+
+  if (country) {
+    companyInclude.locations = [{ country }];
   }
 
+  if (minSize || maxSize) {
+    const sizeObj = {};
+    if (minSize) sizeObj.min = parseInt(minSize, 10);
+    if (maxSize) sizeObj.max = parseInt(maxSize, 10);
+    companyInclude.sizes = [sizeObj];
+  }
+
+  // Use compliant keywords matching instead of deprecated string fields
+  if (industry) {
+    companyInclude.keywords = [industry];
+  }
+
+  const requestBody = {
+    pagination: {
+      page: 1, // Lusha V3 uses 1-based or 0-based index depending on tier; 1 is standard for prospecting lists
+      size: 25
+    },
+    filters: {
+      companies: {
+        include: companyInclude
+      }
+    }
+  };
+
   try {
-    // Lusha's company filter field for text-based industry names is
-    // "industriesLabels" (confirmed against docs.lusha.com). There is also
-    // a numeric-ID variant, "mainIndustriesIds", used if you look up IDs
-    // first via GET /prospecting/filters/companies/industries_labels — not
-    // needed here since we're passing plain labels.
-    const sizeFilter = { min: Number(minSize) || undefined };
-    if (maxSize) sizeFilter.max = Number(maxSize);
+    const data = await lushaFetch("/v3/prospecting/company", requestBody);
+    
+    // Normalize response rows for the front-end list
+    const companies = (data?.data || data?.records || []).map((c) => ({
+      name: c.name || "Unknown Company",
+      domain: c.domain || "",
+      industry: c.industry || industry || "",
+      size: c.size?.employeesInCompany || c.companySize?.name || "Unknown Size",
+      country: c.location?.country || country || ""
+    }));
 
-    const body = {
-      filters: {
-        companies: {
-          include: {
-            locations: [{ country }],
-            industriesLabels: [industry],
-            sizes: [sizeFilter],
-          },
-        },
-      },
-      pages: { page, size: Math.min(pageSize, 10) }, // capped small on purpose (light usage)
-    };
-
-    const data = await lushaFetch("/prospecting/company/search", body);
-    res.json(data);
+    res.json({ companies });
   } catch (err) {
     console.error("search-companies error:", err.details || err.message);
     res.status(err.status || 500).json({ error: err.message, details: err.details });
@@ -100,45 +102,85 @@ app.post("/api/search-companies", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------
-// 2. Given selected companies (by domain), find the marketing/influencer
-//    decision-maker at each one
+// 2. Find Decision Makers for Selected Companies
 // ---------------------------------------------------------------------
 app.post("/api/find-contacts", async (req, res) => {
-  const { companies } = req.body; // [{ domain, name }]
+  const { domains } = req.body;
 
-  if (!Array.isArray(companies) || companies.length === 0) {
-    return res.status(400).json({ error: "companies[] is required" });
+  if (!Array.isArray(domains) || domains.length === 0) {
+    return res.status(400).json({ error: "domains[] array is required" });
   }
 
+  // Target keywords for marketing/influencer leadership roles
+  const MARKETING_KEYWORDS = ["marketing", "influencer", "growth", "social media", "pr", "brand", "partnership"];
+
+  const requestBody = {
+    pagination: {
+      page: 1,
+      size: 50
+    },
+    filters: {
+      contacts: {
+        include: {
+          functions: ["marketing"]
+        }
+      },
+      companies: {
+        include: {
+          domains: domains
+        }
+      }
+    }
+  };
+
   try {
-    const body = {
-      companies: companies.map((c) => ({
-        domain: c.domain,
-        clientReferenceId: c.domain,
-      })),
-    };
+    const data = await lushaFetch("/v3/prospecting/contact", requestBody);
+    const records = data?.data || data?.records || [];
 
-    const data = await lushaFetch("/v3/contacts/decision-makers", body);
-
-    // Filter/rank each company's decision makers to ones that look like
-    // marketing/influencer/brand roles. Fall back to the top-ranked
-    // decision maker if nothing matches the keywords.
-    const shaped = (data.results || data.data || []).map((entry) => {
-      const candidates = entry.contacts || entry.decisionMakers || [];
-      const marketingMatch = candidates.find((c) =>
-        MARKETING_TITLE_KEYWORDS.some((kw) =>
-          (c.title || "").toLowerCase().includes(kw)
-        )
-      );
-      return {
-        companyDomain: entry.clientReferenceId || entry.domain,
-        companyName: entry.companyName || entry.name,
-        contact: marketingMatch || candidates[0] || null,
-        allCandidates: candidates,
+    // Group records matching by unique domain
+    const grouped = {};
+    domains.forEach(d => {
+      grouped[d] = {
+        companyDomain: d,
+        companyName: "",
+        contact: null,
+        allCandidates: []
       };
     });
 
-    res.json({ results: shaped, raw: data });
+    records.forEach((c) => {
+      const d = c.company?.domain || c.companyDomain;
+      if (!d || !grouped[d]) return;
+
+      if (!grouped[d].companyName && c.company?.name) {
+        grouped[d].companyName = c.company.name;
+      }
+
+      const candidate = {
+        id: c.id,
+        contactId: c.id,
+        name: `${c.firstName || ""} ${c.lastName || ""}`.trim() || "Someone",
+        title: c.title || "Marketing Representative",
+        phone: c.phoneNumbers?.[0]?.number || c.phone || null,
+        email: c.emails?.[0]?.email || c.email || null
+      };
+
+      grouped[d].allCandidates.push(candidate);
+    });
+
+    // Score and select the single best match per company domain
+    const shaped = Object.values(grouped).map((entry) => {
+      if (entry.allCandidates.length === 0) return entry;
+
+      const marketingMatch = entry.allCandidates.find((c) =>
+        MARKETING_KEYWORDS.some((kw) => (c.title || "").toLowerCase().includes(kw))
+      );
+
+      entry.contact = marketingMatch || entry.allCandidates[0];
+      return entry;
+    });
+
+    res.json({ results: shaped });
   } catch (err) {
     console.error("find-contacts error:", err.details || err.message);
     res.status(err.status || 500).json({ error: err.message, details: err.details });
@@ -146,8 +188,7 @@ app.post("/api/find-contacts", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------
-// 3. Reveal phone/email for chosen contact IDs (costs a credit per reveal —
-//    only call this for contacts the rep actually selected)
+// 3. Enrich / Reveal Contact (Consumes 1 Credit)
 // ---------------------------------------------------------------------
 app.post("/api/reveal-contact", async (req, res) => {
   const { contactIds } = req.body;
@@ -158,7 +199,8 @@ app.post("/api/reveal-contact", async (req, res) => {
 
   try {
     const data = await lushaFetch("/v3/contacts/enrich", { contactIds });
-    res.json(data);
+    const revealedArray = data?.data || data?.results || [];
+    res.json({ contacts: revealedArray });
   } catch (err) {
     console.error("reveal-contact error:", err.details || err.message);
     res.status(err.status || 500).json({ error: err.message, details: err.details });
@@ -166,4 +208,6 @@ app.post("/api/reveal-contact", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Lead-gen tool running on http://localhost:${PORT}`));
+app.listen(PORT, () => {
+  console.log(`🚀 Production Lead Finder server running on port ${PORT}`);
+});
