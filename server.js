@@ -43,7 +43,7 @@ app.post("/api/search-companies", async (req, res) => {
     companyInclude.locations = [{ country: country }];
   }
 
-  // FIXED: Properly splits "51-200" into an object array [{ min: 51, max: 200 }] expected by Lusha V3
+  // Employee Size mapping
   if (size && size.includes("-")) {
     const [minStr, maxStr] = size.split("-");
     companyInclude.sizes = [{
@@ -52,9 +52,19 @@ app.post("/api/search-companies", async (req, res) => {
     }];
   }
 
-  // Free-text search matching for classifications (e.g., "coffee")
+  // Classification logic
   if (keywords) {
-    companyInclude.searchText = keywords.trim();
+    const cleanKeyword = keywords.trim().toLowerCase();
+    
+    // If they type common industry terms, map them directly to official labels for massive reach
+    if (["coffee", "restaurant", "food", "fish"].includes(cleanKeyword)) {
+      companyInclude.industriesLabels = ["Food & Beverages", "Restaurants", "Retail"];
+    } else if (["marketing", "advertising", "pr"].includes(cleanKeyword)) {
+      companyInclude.industriesLabels = ["Marketing and Advertising", "Public Relations and Communications"];
+    } else {
+      // Fallback to standard free-text search across all company fields
+      companyInclude.searchText = keywords.trim();
+    }
   }
 
   const requestBody = {
@@ -165,5 +175,5 @@ app.post("/api/reveal-contact", async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log("🚀 Production Lead Finder server fully running.");
+  console.log("🚀 Production Lead Finder server running with advanced classification mapping.");
 });
