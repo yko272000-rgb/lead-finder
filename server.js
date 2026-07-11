@@ -56,11 +56,11 @@ app.post("/api/search-companies", async (req, res) => {
   if (keywords) {
     const cleanKeyword = keywords.trim().toLowerCase();
     
-    // If they type common industry terms, map them directly to official labels for massive reach
+    // FIXED: Maps to the correct V3 field name 'industries' instead of 'industriesLabels'
     if (["coffee", "restaurant", "food", "fish"].includes(cleanKeyword)) {
-      companyInclude.industriesLabels = ["Food & Beverages", "Restaurants", "Retail"];
+      companyInclude.industries = ["Food & Beverages", "Restaurants", "Retail"];
     } else if (["marketing", "advertising", "pr"].includes(cleanKeyword)) {
-      companyInclude.industriesLabels = ["Marketing and Advertising", "Public Relations and Communications"];
+      companyInclude.industries = ["Marketing and Advertising", "Public Relations and Communications"];
     } else {
       // Fallback to standard free-text search across all company fields
       companyInclude.searchText = keywords.trim();
@@ -175,5 +175,5 @@ app.post("/api/reveal-contact", async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log("🚀 Production Lead Finder server running with advanced classification mapping.");
+  console.log("🚀 Production Lead Finder server completely updated.");
 });
