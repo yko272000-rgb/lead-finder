@@ -6,14 +6,13 @@ import express from "express";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
-import axios from "axios";
 
 dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static(path.join(__dirname, \"public\")));
 
 const LUSHA_API_KEY = process.env.LUSHA_API_KEY;
 const LUSHA_BASE = "https://api.lusha.com";
@@ -24,24 +23,26 @@ if (!LUSHA_API_KEY) {
   );
 }
 
-// Global helper for Lusha API calls using Axios
+// Global helper for Lusha fetch calls
 async function lushaFetch(endpoint, body) {
-  try {
-    const response = await axios.post(`${LUSHA_BASE}${endpoint}`, body, {
-      headers: {
-        "Content-Type": "application/json",
-        api_key: LUSHA_API_KEY,
-      },
-    });
-    return response.data;
-  } catch (error) {
-    const status = error.response?.status || 500;
-    const data = error.response?.data || {};
-    const err = new Error(data?.message || `Lusha request failed (${status})`);
-    err.status = status;
+  const res = await fetch(`${LUSHA_BASE}${endpoint}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      api_key: LUSHA_API_KEY,
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    const err = new Error(data?.message || `Lusha request failed (${res.status})`);
+    err.status = res.status;
     err.details = data;
     throw err;
   }
+  return data;
 }
 
 // ---------------------------------------------------------------------
@@ -71,7 +72,7 @@ app.post("/api/search-companies", async (req, res) => {
 
   const requestBody = {
     pagination: {
-      page: 1,
+      page: 1, // Lusha V3 uses 1-based or 0-based index depending on tier; 1 is standard for prospecting lists
       size: 25
     },
     filters: {
