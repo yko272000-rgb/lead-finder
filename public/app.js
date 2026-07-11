@@ -1,7 +1,7 @@
 // ---- state ----
-let searchResults = [];   // companies returned from Lusha
+let searchResults = [];   
 let selectedDomains = new Set();
-let contactsByDomain = {}; // domain -> { companyName, contact, allCandidates }
+let contactsByDomain = {}; 
 
 // ---- template (saved per-device in localStorage, per rep) ----
 const templateEl = document.getElementById("template");
@@ -28,116 +28,146 @@ document.getElementById("search-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const country = document.getElementById("country").value;
   const industry = document.getElementById("industry").value;
-  const size = document.getElementById("size").value; // e.g. "51-100" or "1001-" (open-ended, 1000+)
+  const size = document.getElementById("size").value; 
   const [minSizeRaw, maxSizeRaw] = size.split("-");
-  const minSize = minSizeRaw;
-  const maxSize = maxSizeRaw || undefined; // "1001-" -> no upper bound
 
-  const status = document.getElementById("search-status");
-  const btn = document.getElementById("search-btn");
+  const btn = e.target.querySelector("button[type='submit']");
+  const originalText = btn.textContent;
   btn.disabled = true;
-  status.innerHTML = `<p class="loading">Searching…</p>`;
+  btn.textContent = "Searching V3 API...";
 
   try {
     const res = await fetch("/api/search-companies", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ country, industry, minSize, maxSize, pageSize: 10 }),
+      body: JSON.stringify({
+        country,
+        industry,
+        minSize: minSizeRaw ? minSizeRaw.trim() : null,
+        maxSize: maxSizeRaw ? maxSizeRaw.trim() : null,
+      }),
     });
+
     const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Search call failed");
 
-    if (!res.ok) throw new Error(data.error || "Search failed");
-
-    searchResults = data.results || data.data || data.companies || [];
-    renderResults();
-    status.innerHTML = searchResults.length
-      ? ""
-      : `<p class="loading">No companies matched — try widening the search.</p>`;
+    searchResults = data.companies || [];
+    renderCompanies();
   } catch (err) {
-    status.innerHTML = `<p class="error">${err.message}</p>`;
+    alert("Error searching: " + err.message);
   } finally {
     btn.disabled = false;
+    btn.textContent = originalText;
   }
 });
 
-function renderResults() {
+function renderCompanies() {
   const card = document.getElementById("results-card");
   const list = document.getElementById("results-list");
-  card.hidden = searchResults.length === 0;
   list.innerHTML = "";
+  selectedDomains.clear();
 
-  searchResults.forEach((c) => {
-    const domain = c.domain || c.website;
-    const name = c.companyName || c.name;
-    const row = document.createElement("div");
-    row.className = "result-row";
-    row.innerHTML = `
-      <input type="checkbox" data-domain="${domain}" />
-      <div class="name">${name} <div class="meta">${domain || ""} · ${c.employeeCount || c.size || ""} employees</div></div>
-    `;
-    row.querySelector("input").addEventListener("change", (e) => {
-      if (e.target.checked) selectedDomains.add(domain);
-      else selectedDomains.delete(domain);
-    });
-    list.appendChild(row);
-  });
-}
-
-// ---- Step 2: find marketing contacts for selected companies ----
-document.getElementById("find-contacts-btn").addEventListener("click", async () => {
-  const status = document.getElementById("contacts-status");
-  if (selectedDomains.size === 0) {
-    status.innerHTML = `<p class="error">Select at least one company first.</p>`;
+  if (searchResults.length === 0) {
+    list.innerHTML = `<div class="hint" style="padding:12px;">No companies found matching these exact criteria.</div>`;
+    card.hidden = false;
     return;
   }
 
-  status.innerHTML = `<p class="loading">Finding decision makers…</p>`;
+  searchResults.forEach((c) => {
+    if (!c.domain) return; 
+    const row = document.createElement("div");
+    row.className = "result-row";
+    row.innerHTML = `
+      <input type="checkbox" data-domain="${c.domain}" data-name="${c.name.replace(/"/g, '&quot;')}">
+      <div class="name">
+        ${c.name}
+        <div class="meta">${c.domain} · ${c.size} employees · ${c.country}</div>
+      </div>
+    `;
 
-  const companies = searchResults
-    .filter((c) => selectedDomains.has(c.domain || c.website))
-    .map((c) => ({ domain: c.domain || c.website, name: c.companyName || c.name }));
+    row.querySelector("input").addEventListener("change", (e) => {
+      if (e.target.checked) {
+        selectedDomains.add(e.target.dataset.domain);
+      } else {
+        selectedDomains.delete(e.target.dataset.domain);
+      }
+    });
 
+    list.appendChild(row);
+  });
+
+  card.hidden = false;
+  document.getElementById("contacts-card").hidden = true; 
+}
+
+// ---- Step 2: bulk find decision makers ----
+document.getElementById("find-contacts-btn").addEventListener("click", async () => {
+  if (selectedDomains.size === 0) {
+    alert("Please select at least one company first.");
+    return;
+  }
+
+  const statusEl = document.getElementById("contacts-status");
+  statusEl.textContent = `Fetching decision makers for ${selectedDomains.size} companies...`;
+  
   try {
     const res = await fetch("/api/find-contacts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ companies }),
+      body: JSON.stringify({ domains: Array.from(selectedDomains) }),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Lookup failed");
 
-    (data.results || []).forEach((r) => {
-      contactsByDomain[r.companyDomain] = r;
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to parse matching contacts");
+
+    contactsByDomain = {};
+    (data.results || []).forEach((item) => {
+      contactsByDomain[item.companyDomain] = item;
     });
 
     renderContacts();
-    status.innerHTML = "";
+    statusEl.textContent = "";
   } catch (err) {
-    status.innerHTML = `<p class="error">${err.message}</p>`;
+    statusEl.textContent = "Error loading contacts: " + err.message;
   }
 });
 
 function renderContacts() {
   const card = document.getElementById("contacts-card");
   const list = document.getElementById("contacts-list");
-  card.hidden = Object.keys(contactsByDomain).length === 0;
   list.innerHTML = "";
 
-  Object.entries(contactsByDomain).forEach(([domain, entry]) => {
-    const { companyName, contact } = entry;
+  const entries = Object.values(contactsByDomain);
+  if (entries.length === 0) {
+    list.innerHTML = `<p class="hint">No contacts identified for the selected selections.</p>`;
+    card.hidden = false;
+    return;
+  }
+
+  entries.forEach((entry) => {
+    const domain = entry.companyDomain;
+    const companyName = entry.companyName || domain;
+    const contact = entry.contact;
+
     const row = document.createElement("div");
     row.className = "contact-row";
 
     if (!contact) {
-      row.innerHTML = `<div class="name">${companyName}<div class="meta">No marketing contact found</div></div>`;
+      row.innerHTML = `
+        <div class="name" style="color:var(--text-dim);">
+          ${companyName}
+          <div class="meta">No marketing profile indexed by Lusha for this domain.</div>
+        </div>
+      `;
       list.appendChild(row);
       return;
     }
 
     const hasPhone = !!contact.phone;
     row.innerHTML = `
-      <div class="name">${contact.name || "Unknown"} — ${contact.title || ""}
-        <div class="meta">${companyName}${hasPhone ? " · " + contact.phone : ""}</div>
+      <div class="name">
+        ${contact.name}
+        <div class="meta">${contact.title} at <strong>${companyName}</strong> ${hasPhone ? " · " + contact.phone : ""}</div>
       </div>
       ${
         hasPhone
@@ -153,6 +183,8 @@ function renderContacts() {
 
     list.appendChild(row);
   });
+
+  card.hidden = false;
 }
 
 async function revealContact(btn, domain) {
@@ -170,8 +202,14 @@ async function revealContact(btn, domain) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Reveal failed");
 
-    const revealed = (data.contacts || data.results || [])[0];
-    entry.contact.phone = revealed?.phone || revealed?.phoneNumbers?.[0]?.number;
+    const revealed = (data.contacts || [])[0];
+    const newPhone = revealed?.phoneNumbers?.[0]?.number || revealed?.phone || null;
+    
+    if (newPhone) {
+      entry.contact.phone = newPhone;
+    } else {
+      alert("No verified phone number found on profile entry.");
+    }
     renderContacts();
   } catch (err) {
     btn.textContent = "Failed — retry";
@@ -180,6 +218,6 @@ async function revealContact(btn, domain) {
 }
 
 function buildWaLink(phone, message) {
-  const digits = (phone || "").replace(/[^\d]/g, "");
-  return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
+  const cleanPhone = phone.replace(/[+\s()--]/g, "");
+  return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
 }
