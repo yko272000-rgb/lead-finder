@@ -50,7 +50,6 @@ app.post("/api/search-companies", async (req, res) => {
   }
 
   if (keywords) {
-    // Splits comma separated values or handles simple strings safely into arrays
     companyInclude.keywords = keywords.split(",").map(k => k.trim());
   }
 
