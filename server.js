@@ -6,13 +6,14 @@ import express from "express";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
+import fetch from "node-fetch";
 
 dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(express.json());
-app.use(express.static(path.join(__dirname, \"public\")));
+app.use(express.static(path.join(__dirname, "public")));
 
 const LUSHA_API_KEY = process.env.LUSHA_API_KEY;
 const LUSHA_BASE = "https://api.lusha.com";
@@ -72,7 +73,7 @@ app.post("/api/search-companies", async (req, res) => {
 
   const requestBody = {
     pagination: {
-      page: 1, // Lusha V3 uses 1-based or 0-based index depending on tier; 1 is standard for prospecting lists
+      page: 1,
       size: 25
     },
     filters: {
