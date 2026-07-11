@@ -35,21 +35,24 @@ async function lushaFetch(endpoint, body) {
 
 // 1. Search Companies via V3 Prospecting Schema
 app.post("/api/search-companies", async (req, res) => {
-  const { country, keywords, minSize, maxSize } = req.body;
+  // Gracefully handles both single 'size' string from front-end and min/max splits
+  const { country, keywords, size, minSize, maxSize } = req.body;
   const companyInclude = {};
 
+  // Country filter mapping
   if (country) {
-    companyInclude.locations = [{ country }];
+    companyInclude.locations = [country];
   }
 
-  if (minSize || maxSize) {
-    const sizeObj = {};
-    if (minSize) sizeObj.min = parseInt(minSize, 10);
-    if (maxSize) sizeObj.max = parseInt(maxSize, 10);
-    companyInclude.sizes = [sizeObj];
+  // Employee Size mapping - matches the dropdown value ["11-50"] directly
+  if (size) {
+    companyInclude.sizes = [size];
+  } else if (minSize || maxSize) {
+    const range = minSize && maxSize ? `${minSize}-${maxSize}` : (minSize || maxSize);
+    companyInclude.sizes = [range];
   }
 
-  // Uses Lusha V3 native multi-field string matching
+  // Free-text search matching for classifications (e.g., "coffee")
   if (keywords) {
     companyInclude.searchText = keywords.trim();
   }
@@ -162,5 +165,5 @@ app.post("/api/reveal-contact", async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 Production Lead Finder server running on port ${PORT}`);
+  console.log("🚀 Production Lead Finder server running successfully.");
 });
