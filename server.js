@@ -49,8 +49,9 @@ app.post("/api/search-companies", async (req, res) => {
     companyInclude.sizes = [sizeObj];
   }
 
+  // Uses Lusha V3 native multi-field string matching
   if (keywords) {
-    companyInclude.keywords = keywords.split(",").map(k => k.trim());
+    companyInclude.searchText = keywords.trim();
   }
 
   const requestBody = {
