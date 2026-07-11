@@ -35,16 +35,15 @@ async function lushaFetch(endpoint, body) {
 
 // 1. Search Companies via V3 Prospecting Schema
 app.post("/api/search-companies", async (req, res) => {
-  // Gracefully handles both single 'size' string from front-end and min/max splits
   const { country, keywords, size, minSize, maxSize } = req.body;
   const companyInclude = {};
 
-  // Country filter mapping
+  // FIXED: Corrected location format to match Lusha V3's strict object array rule
   if (country) {
-    companyInclude.locations = [country];
+    companyInclude.locations = [{ country: country }];
   }
 
-  // Employee Size mapping - matches the dropdown value ["11-50"] directly
+  // Employee Size mapping - matches dropdown format ["11-50"] or custom ranges
   if (size) {
     companyInclude.sizes = [size];
   } else if (minSize || maxSize) {
@@ -165,5 +164,5 @@ app.post("/api/reveal-contact", async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log("🚀 Production Lead Finder server running successfully.");
+  console.log("🚀 Fixed Production Lead Finder server running successfully.");
 });
