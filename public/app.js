@@ -53,7 +53,7 @@ document.getElementById("search-form").addEventListener("submit", async (e) => {
     renderCompanies();
   } catch (err) {
     alert("Error searching: " + err.message);
-  } bits {
+  } finally {
     btn.disabled = false;
     btn.textContent = originalText;
   }
