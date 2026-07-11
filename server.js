@@ -70,16 +70,21 @@ app.post("/api/search-companies", async (req, res) => {
   }
 
   try {
-    // NOTE: Verify this filter shape against your Lusha API Hub / Postman
-    // playground before going live — Lusha's prospecting filter field
-    // names have shifted between API versions (v2 -> v3).
+    // Lusha's company filter field for text-based industry names is
+    // "industriesLabels" (confirmed against docs.lusha.com). There is also
+    // a numeric-ID variant, "mainIndustriesIds", used if you look up IDs
+    // first via GET /prospecting/filters/companies/industries_labels — not
+    // needed here since we're passing plain labels.
+    const sizeFilter = { min: Number(minSize) || undefined };
+    if (maxSize) sizeFilter.max = Number(maxSize);
+
     const body = {
       filters: {
         companies: {
           include: {
             locations: [{ country }],
-            mainIndustries: [industry],
-            sizes: [{ min: Number(minSize) || undefined, max: Number(maxSize) || undefined }],
+            industriesLabels: [industry],
+            sizes: [sizeFilter],
           },
         },
       },
