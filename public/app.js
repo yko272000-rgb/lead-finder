@@ -1,9 +1,7 @@
-// ---- state ----
 let searchResults = [];   
 let selectedDomains = new Set();
 let contactsByDomain = {}; 
 
-// ---- template (saved per-device in localStorage, per rep) ----
 const templateEl = document.getElementById("template");
 const savedTemplate = localStorage.getItem("fomo_wa_template");
 if (savedTemplate) templateEl.value = savedTemplate;
@@ -23,11 +21,11 @@ function fillTemplate(company, contact) {
     .replaceAll("{contact_title}", contact?.title || "");
 }
 
-// ---- Step 1: search ----
+// Step 1: search via V3 endpoint
 document.getElementById("search-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const country = document.getElementById("country").value;
-  const industry = document.getElementById("industry").value;
+  const keywords = document.getElementById("keywords").value;
   const size = document.getElementById("size").value; 
   const [minSizeRaw, maxSizeRaw] = size.split("-");
 
@@ -42,7 +40,7 @@ document.getElementById("search-form").addEventListener("submit", async (e) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         country,
-        industry,
+        keywords,
         minSize: minSizeRaw ? minSizeRaw.trim() : null,
         maxSize: maxSizeRaw ? maxSizeRaw.trim() : null,
       }),
@@ -55,7 +53,7 @@ document.getElementById("search-form").addEventListener("submit", async (e) => {
     renderCompanies();
   } catch (err) {
     alert("Error searching: " + err.message);
-  } finally {
+  } bits {
     btn.disabled = false;
     btn.textContent = originalText;
   }
@@ -68,7 +66,7 @@ function renderCompanies() {
   selectedDomains.clear();
 
   if (searchResults.length === 0) {
-    list.innerHTML = `<div class="hint" style="padding:12px;">No companies found matching these exact criteria.</div>`;
+    list.innerHTML = `<div class="hint" style="padding:12px;">No companies found matching these criteria.</div>`;
     card.hidden = false;
     return;
   }
@@ -100,7 +98,7 @@ function renderCompanies() {
   document.getElementById("contacts-card").hidden = true; 
 }
 
-// ---- Step 2: bulk find decision makers ----
+// Step 2: find decision makers
 document.getElementById("find-contacts-btn").addEventListener("click", async () => {
   if (selectedDomains.size === 0) {
     alert("Please select at least one company first.");
@@ -118,7 +116,7 @@ document.getElementById("find-contacts-btn").addEventListener("click", async () 
     });
 
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Failed to parse matching contacts");
+    if (!res.ok) throw new Error(data.error || "Failed to find contacts");
 
     contactsByDomain = {};
     (data.results || []).forEach((item) => {
@@ -139,7 +137,7 @@ function renderContacts() {
 
   const entries = Object.values(contactsByDomain);
   if (entries.length === 0) {
-    list.innerHTML = `<p class="hint">No contacts identified for the selected selections.</p>`;
+    list.innerHTML = `<p class="hint">No contacts identified.</p>`;
     card.hidden = false;
     return;
   }
@@ -208,7 +206,7 @@ async function revealContact(btn, domain) {
     if (newPhone) {
       entry.contact.phone = newPhone;
     } else {
-      alert("No verified phone number found on profile entry.");
+      alert("No verified phone number found on profile.");
     }
     renderContacts();
   } catch (err) {
