@@ -1,179 +1,119 @@
-import express from "express";
-import dotenv from "dotenv";
-import path from "path";
-import { fileURLToPath } from "url";
-import axios from "axios";
+const express = require('express');
+const axios = require('axios');
+require('dotenv').config();
 
-dotenv.config();
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "public")));
 
-const LUSHA_API_KEY = process.env.LUSHA_API_KEY;
-const LUSHA_BASE = "https://api.lusha.com";
+// Helper function to map frontend size numbers to Lusha V3 string ranges
+function mapCompanySize(min, max) {
+    const minVal = parseInt(min, 10) || 0;
+    const maxVal = parseInt(max, 10) || Infinity;
 
-async function lushaFetch(endpoint, body) {
-  try {
-    const response = await axios.post(`${LUSHA_BASE}${endpoint}`, body, {
-      headers: {
-        "Content-Type": "application/json",
-        api_key: LUSHA_API_KEY,
-      },
-    });
-    return response.data;
-  } catch (error) {
-    const status = error.response?.status || 500;
-    const data = error.response?.data || {};
-    const err = new Error(data?.message || `Lusha request failed (${status})`);
-    err.status = status;
-    err.details = data;
-    throw err;
-  }
+    // Lusha V3 standard size buckets
+    if (minVal >= 1 && maxVal <= 10) return "1-10";
+    if (minVal >= 11 && maxVal <= 50) return "11-50";
+    if (minVal >= 51 && maxVal <= 200) return "51-200";
+    if (minVal >= 201 && maxVal <= 500) return "201-500";
+    if (minVal >= 501 && maxVal <= 1000) return "501-1000";
+    if (minVal >= 1001 && maxVal <= 5000) return "1001-5000";
+    if (minVal >= 5001 && maxVal <= 10000) return "5001-10000";
+    if (minVal >= 10001) return "10001+";
+
+    // Dynamic fallback approximation if front-end ranges span multiple buckets
+    if (minVal <= 50 && maxVal > 10) return "11-50";
+    if (minVal <= 200 && maxVal > 50) return "51-200";
+    
+    return "11-50"; // Safe default production fallback
 }
 
-// 1. Search Companies via V3 Prospecting Schema
-app.post("/api/search-companies", async (req, res) => {
-  const { country, keywords, size } = req.body;
-  const companyInclude = {};
-
-  // Country filter mapping
-  if (country) {
-    companyInclude.locations = [{ country: country }];
-  }
-
-  // Employee Size mapping
-  if (size && size.includes("-")) {
-    const [minStr, maxStr] = size.split("-");
-    companyInclude.sizes = [{
-      min: parseInt(minStr, 10),
-      max: parseInt(maxStr, 10)
-    }];
-  }
-
-  // Classification logic
-  if (keywords) {
-    const cleanKeyword = keywords.trim().toLowerCase();
+// Helper function to handle Lusha V3 business classification mapping
+function mapIndustryKeywords(keyword) {
+    if (!keyword) return [];
     
-    // FIXED: Maps to the correct V3 field name 'industries' instead of 'industriesLabels'
-    if (["coffee", "restaurant", "food", "fish"].includes(cleanKeyword)) {
-      companyInclude.industries = ["Food & Beverages", "Restaurants", "Retail"];
-    } else if (["marketing", "advertising", "pr"].includes(cleanKeyword)) {
-      companyInclude.industries = ["Marketing and Advertising", "Public Relations and Communications"];
-    } else {
-      // Fallback to standard free-text search across all company fields
-      companyInclude.searchText = keywords.trim();
+    const cleanKeyword = keyword.toLowerCase().trim();
+
+    // Rule 4: Map common food/hospitality terms
+    if (['coffee', 'restaurant', 'food', 'fish'].includes(cleanKeyword)) {
+        return ["Food & Beverages", "Restaurants", "Retail"];
     }
-  }
 
-  const requestBody = {
-    pagination: { page: 0, size: 25 },
-    filters: {
-      companies: {
-        include: companyInclude
-      }
+    // Rule 4: Map common marketing/media terms
+    if (['marketing', 'advertising', 'pr'].includes(cleanKeyword)) {
+        return ["Marketing and Advertising", "Public Relations and Communications"];
     }
-  };
 
-  try {
-    const data = await lushaFetch("/v3/companies/prospecting", requestBody);
-    const records = data?.data || data?.records || [];
+    // Rule 4 Fallback: If no match, return the raw search text as an array item
+    return [keyword];
+}
 
-    const companies = records.map((c) => ({
-      name: c.name || "Unknown Company",
-      domain: c.domain || c.homepageDomain || "",
-      industry: c.industry || "",
-      size: c.companySize?.name || (c.size?.min ? `${c.size.min}-${c.size.max}` : "Unknown Size"),
-      country: c.location?.country || country || ""
-    }));
+app.post('/api/find-leads', async (req, res) => {
+    try {
+        const { country, minSize, maxSize, keyword } = req.body;
 
-    res.json({ companies });
-  } catch (err) {
-    console.error("search-companies error:", err.details || err.message);
-    res.status(err.status || 500).json({ error: err.message, details: err.details });
-  }
+        // Constructing the Lusha V3 Payload exactly to API specification
+        const lushaPayload = {
+            filters: {
+                companies: {
+                    include: {}
+                }
+            },
+            // You can add pagination or standard fields here if required by your V3 flow
+            page: 1,
+            pageSize: 20 
+        };
+
+        // Rule 1: locations must be an object array: [{ country: country }]
+        if (country) {
+            lushaPayload.filters.companies.include.locations = [
+                { country: country }
+            ];
+        }
+
+        // Rule 2: sizes must be an array containing a mapped string range
+        if (minSize || maxSize) {
+            const mappedSizeString = mapCompanySize(minSize, maxSize);
+            lushaPayload.filters.companies.include.sizes = [mappedSizeString];
+        }
+
+        // Rule 3 & 4: Business classification using industriesLabels and mapped keywords
+        if (keyword) {
+            const mappedLabels = mapIndustryKeywords(keyword);
+            if (mappedLabels.length > 0) {
+                lushaPayload.filters.companies.include.industriesLabels = mappedLabels;
+            }
+        }
+
+        // Clear empty include objects if no filters were added to prevent API schema validation errors
+        if (Object.keys(lushaPayload.filters.companies.include).length === 0) {
+            delete lushaPayload.filters.companies;
+        }
+
+        // Axios request to Lusha V3 Prospecting Endpoint
+        const response = await axios.post(
+            'https://api.lusha.com/v3/prospecting/search', // Ensure this matches your exact Lusha regional base URL
+            lushaPayload,
+            {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${process.env.LUSHA_API_KEY}`
+                }
+            }
+        );
+
+        res.status(200).json(response.data);
+
+    } catch (error) {
+        console.error('Lusha API Error:', error.response?.data || error.message);
+        
+        res.status(error.response?.status || 500).json({
+            error: 'Failed to fetch leads from Lusha V3 API',
+            details: error.response?.data || error.message
+        });
+    }
 });
 
-// 2. Find Decision Makers
-app.post("/api/find-contacts", async (req, res) => {
-  const { domains } = req.body;
-  if (!Array.isArray(domains) || domains.length === 0) {
-    return res.status(400).json({ error: "domains[] array is required" });
-  }
-
-  const MARKETING_KEYWORDS = ["marketing", "influencer", "growth", "social media", "pr", "brand", "partnership"];
-
-  const requestBody = {
-    pagination: { page: 0, size: 50 },
-    filters: {
-      contacts: {
-        include: { functions: ["marketing"] }
-      },
-      companies: {
-        include: { domains: domains }
-      }
-    }
-  };
-
-  try {
-    const data = await lushaFetch("/v3/contacts/prospecting", requestBody);
-    const records = data?.data || data?.records || [];
-
-    const grouped = {};
-    domains.forEach(d => {
-      grouped[d] = { companyDomain: d, companyName: "", contact: null, allCandidates: [] };
-    });
-
-    records.forEach((c) => {
-      const d = c.company?.domain || c.companyDomain;
-      if (!d || !grouped[d]) return;
-
-      if (!grouped[d].companyName && c.company?.name) {
-        grouped[d].companyName = c.company.name;
-      }
-
-      const candidate = {
-        id: c.id,
-        contactId: c.id,
-        name: `${c.firstName || ""} ${c.lastName || ""}`.trim() || "Someone",
-        title: c.title || "Marketing Specialist",
-        phone: c.phoneNumbers?.[0]?.number || c.phone || null,
-        email: c.emails?.[0]?.email || c.email || null
-      };
-      grouped[d].allCandidates.push(candidate);
-    });
-
-    const shaped = Object.values(grouped).map((entry) => {
-      if (entry.allCandidates.length === 0) return entry;
-      const marketingMatch = entry.allCandidates.find((c) =>
-        MARKETING_KEYWORDS.some((kw) => (c.title || "").toLowerCase().includes(kw))
-      );
-      entry.contact = marketingMatch || entry.allCandidates[0];
-      return entry;
-    });
-
-    res.json({ results: shaped });
-  } catch (err) {
-    console.error("find-contacts error:", err.details || err.message);
-    res.status(err.status || 500).json({ error: err.message, details: err.details });
-  }
-});
-
-// 3. Enrich / Reveal Contact
-app.post("/api/reveal-contact", async (req, res) => {
-  const { contactIds } = req.body;
-  try {
-    const data = await lushaFetch("/v3/contacts/enrich", { contactIds });
-    const revealedArray = data?.data || data?.results || [];
-    res.json({ contacts: revealedArray });
-  } catch (err) {
-    console.error("reveal-contact error:", err.details || err.message);
-    res.status(err.status || 500).json({ error: err.message, details: err.details });
-  }
-});
-
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log("🚀 Production Lead Finder server completely updated.");
+    console.log(`Server running smoothly on port ${PORT}`);
 });
