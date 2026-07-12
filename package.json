@@ -1,0 +1,6 @@
+# Copy this file to ".env" and fill in your real key.
+# Get it from: Lusha Dashboard -> API Hub -> Manage API Keys
+LUSHA_API_KEY=your_lusha_api_key_here
+
+# Port the server runs on locally (most hosts override this automatically)
+PORT=3000
