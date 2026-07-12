@@ -141,8 +141,14 @@ app.post("/api/find-contacts", async (req, res) => {
   }
 
   try {
+    // Normalize "www.example.com" -> "example.com". Company-matching
+    // endpoints like this one typically match on the bare/apex domain —
+    // sending "www.x.com" can silently fail to match even for companies
+    // that are definitely in the database.
+    const cleanDomains = domains.map((d) => d.replace(/^https?:\/\//, "").replace(/^www\./, ""));
+
     const body = {
-      companies: domains.map((domain) => ({ domain, clientReferenceId: domain })),
+      companies: cleanDomains.map((domain) => ({ domain, clientReferenceId: domain })),
     };
 
     const data = await lushaFetch(`${LUSHA_BASE}/v3/contacts/decision-makers`, body);
