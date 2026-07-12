@@ -146,6 +146,7 @@ app.post("/api/find-contacts", async (req, res) => {
     };
 
     const data = await lushaFetch(`${LUSHA_BASE}/v3/contacts/decision-makers`, body);
+    console.log("decision-makers raw response:", JSON.stringify(data).slice(0, 2000));
     const results = data.results || data.data || [];
 
     const shaped = results.map((entry) => {
