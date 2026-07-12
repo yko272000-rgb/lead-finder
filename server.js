@@ -176,7 +176,7 @@ app.post("/api/find-contacts", async (req, res) => {
       };
     });
 
-    res.json({ results: shaped });
+    res.json({ results: shaped, _debug_raw: data });
   } catch (err) {
     console.error("find-contacts error:", err.details || err.message);
     res.status(err.status || 500).json({ error: err.message, details: err.details });
