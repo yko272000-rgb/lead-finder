@@ -25,9 +25,21 @@ function fillTemplate(company, contact) {
 document.getElementById("search-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const country = document.getElementById("country").value;
+  const industryValue = document.getElementById("industry").value; // e.g. "sub:1,2" or "main:16" or "main:7,sub:5"
   const keywords = document.getElementById("keywords").value;
-  const size = document.getElementById("size").value; 
+  const size = document.getElementById("size").value;
   const [minSizeRaw, maxSizeRaw] = size.split("-");
+
+  // Parse "main:7,sub:5" style value into { mainIndustriesIds:[7], subIndustriesIds:[5] }
+  const mainIndustriesIds = [];
+  const subIndustriesIds = [];
+  industryValue.split(",").forEach((part) => {
+    const [kind, ids] = part.split(":");
+    if (!ids) return;
+    const nums = ids.split(",").map(Number).filter((n) => !Number.isNaN(n));
+    if (kind === "main") mainIndustriesIds.push(...nums);
+    if (kind === "sub") subIndustriesIds.push(...nums);
+  });
 
   const btn = e.target.querySelector("button[type='submit']");
   const originalText = btn.textContent;
@@ -40,6 +52,8 @@ document.getElementById("search-form").addEventListener("submit", async (e) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         country,
+        mainIndustriesIds,
+        subIndustriesIds,
         keywords,
         minSize: minSizeRaw ? minSizeRaw.trim() : null,
         maxSize: maxSizeRaw ? maxSizeRaw.trim() : null,
