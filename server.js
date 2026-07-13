@@ -126,12 +126,18 @@ app.post("/api/search-companies", async (req, res) => {
 
 // ---------------------------------------------------------------------
 // 2. Given selected companies (by domain), find the marketing/influencer
-//    decision-maker at each one.
+//    contact at each one.
 //
-//    Uses Lusha's dedicated Decision Makers endpoint (confirmed in your
-//    API Hub screenshot: "Decision Makers APIs — v3/contacts/decision-makers
-//    — Identify the most relevant decision makers at any target company"),
-//    which is purpose-built for exactly this — no filter-field guessing.
+//    IMPORTANT: The Decision Makers endpoint (v3/contacts/decision-makers)
+//    is NOT included in the Starter Lusha plan — confirmed by checking
+//    the account's own credit-pricing table, which lists no price for it
+//    at all (unlike companySearch, contactSearch, revealEmail, etc, which
+//    all have one). That's why it always silently returned zero results,
+//    even for guaranteed-covered companies like Google.
+//
+//    Switched to Contact Search instead — filtered by company domain +
+//    marketing job titles — which IS on this plan and was confirmed
+//    working live (returned 20 real Google marketing contacts on test).
 // ---------------------------------------------------------------------
 app.post("/api/find-contacts", async (req, res) => {
   const { domains } = req.body;
@@ -140,43 +146,56 @@ app.post("/api/find-contacts", async (req, res) => {
     return res.status(400).json({ error: "domains[] array is required" });
   }
 
+  const cleanDomains = domains.map((d) => d.replace(/^https?:\/\//, "").replace(/^www\./, ""));
+
+  const body = {
+    pagination: { page: 0, size: 20 },
+    filters: {
+      contacts: {
+        include: {
+          jobTitles: [
+            "Marketing",
+            "Social Media",
+            "Brand",
+            "Influencer",
+            "Communications",
+            "Growth",
+            "PR",
+          ],
+        },
+      },
+      companies: {
+        include: {
+          domains: cleanDomains,
+        },
+      },
+    },
+  };
+
   try {
-    // Normalize "www.example.com" -> "example.com". Company-matching
-    // endpoints like this one typically match on the bare/apex domain —
-    // sending "www.x.com" can silently fail to match even for companies
-    // that are definitely in the database.
-    const cleanDomains = domains.map((d) => d.replace(/^https?:\/\//, "").replace(/^www\./, ""));
+    const data = await lushaFetch(`${LUSHA_BASE}/v3/contacts/prospecting`, body);
+    console.log("contact-search raw response:", JSON.stringify(data).slice(0, 2000));
 
-    const body = {
-      companies: cleanDomains.map((domain) => ({ domain, clientReferenceId: domain })),
-    };
+    const records = data.results || data.data || [];
 
-    const data = await lushaFetch(`${LUSHA_BASE}/v3/contacts/decision-makers`, body);
-    console.log("decision-makers raw response:", JSON.stringify(data).slice(0, 2000));
-    const results = data.results || data.data || [];
-
-    const shaped = results.map((entry) => {
-      const candidates = entry.contacts || entry.decisionMakers || [];
-      const marketingMatch = candidates.find((c) =>
-        MARKETING_TITLE_KEYWORDS.some((kw) => (c.title || "").toLowerCase().includes(kw))
-      );
-      const best = marketingMatch || candidates[0] || null;
-
-      return {
-        companyDomain: entry.clientReferenceId || entry.domain,
-        companyName: entry.companyName || entry.name || entry.clientReferenceId,
-        contact: best
-          ? {
-              contactId: best.contactId || best.id,
-              name: `${best.firstName || ""} ${best.lastName || ""}`.trim() || best.name || "Someone",
-              title: best.title || "",
-              phone: best.phone || best.phoneNumbers?.[0]?.number || null,
-            }
-          : null,
+    // Group best-matching contact per company domain.
+    const byDomain = {};
+    for (const c of records) {
+      const domain = c.company?.domain || c.companyDomain;
+      if (!domain || byDomain[domain]) continue; // keep the first/best-ranked hit per company
+      byDomain[domain] = {
+        companyDomain: domain,
+        companyName: c.company?.name || domain,
+        contact: {
+          contactId: c.id || c.contactId,
+          name: `${c.firstName || ""} ${c.lastName || ""}`.trim() || "Someone",
+          title: c.jobTitle?.title || c.title || "",
+          phone: null, // not revealed at this step — see reveal-contact
+        },
       };
-    });
+    }
 
-    res.json({ results: shaped, _debug_raw: data });
+    res.json({ results: Object.values(byDomain), _debug_raw: data });
   } catch (err) {
     console.error("find-contacts error:", err.details || err.message);
     res.status(err.status || 500).json({ error: err.message, details: err.details });
