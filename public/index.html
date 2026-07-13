@@ -9,7 +9,7 @@
 <body>
   <header class="topbar">
     <div class="topbar-inner">
-      <div class="logo">lead<span class=\"logo-o\">OOO</span></div>
+      <div class="logo">lead<span class="logo-o">OOO</span></div>
       <div class="logo-tag">by echoooo</div>
     </div>
     <p class="subtitle">Find brands → find their marketing contact → send a WhatsApp cold message</p>
@@ -38,8 +38,29 @@
         </label>
 
         <label>
-          Company Keywords
-          <input type="text" id="keywords" placeholder="e.g. cloud, retail, fish, marketing" required />
+          Business Type
+          <select id="industry" required>
+            <option value="">Select…</option>
+            <option value="sub:1,2">Cafés & Restaurants (F&B)</option>
+            <option value="sub:76,111">FMCG / Food & Beverage Products</option>
+            <option value="main:16">Retail (General)</option>
+            <option value="sub:70,145">Beauty & Cosmetics</option>
+            <option value="sub:113,84">Fashion & Apparel</option>
+            <option value="sub:3,11">Hospitality & Hotels</option>
+            <option value="sub:35,65,62">Health & Wellness</option>
+            <option value="main:15">Real Estate</option>
+            <option value="sub:87,146">Automotive</option>
+            <option value="main:17">Technology</option>
+            <option value="main:6">Education</option>
+            <option value="main:7,sub:5">Entertainment & Events</option>
+            <option value="sub:77,114,138">Home & Furniture</option>
+            <option value="main:9">Financial Services</option>
+          </select>
+        </label>
+
+        <label>
+          Refine (optional)
+          <input type="text" id="keywords" placeholder="e.g. coffee, luxury, organic" />
         </label>
 
         <label>
