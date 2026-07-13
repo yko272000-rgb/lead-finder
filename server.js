@@ -195,7 +195,7 @@ app.post("/api/find-contacts", async (req, res) => {
       };
     }
 
-    res.json({ results: Object.values(byDomain), _debug_raw: data });
+    res.json({ results: Object.values(byDomain) });
   } catch (err) {
     console.error("find-contacts error:", err.details || err.message);
     res.status(err.status || 500).json({ error: err.message, details: err.details });
