@@ -65,14 +65,29 @@ const MARKETING_TITLE_KEYWORDS = [
 ];
 
 // ---------------------------------------------------------------------
-// 1. Search companies by country / keywords / employee size
+// 1. Search companies by country / industry / employee size
 // ---------------------------------------------------------------------
-// The "Business type" dropdown is gone — replaced with a free-text
-// "Company Keywords" field (e.g. "coffee", "retail", "marketing agency")
-// mapped straight to Lusha's confirmed `keywords` filter. No industry ID
-// lookup, no hardcoded classification list — just pass what the rep types.
+// Industry is now a real structured filter — mainIndustriesIds /
+// subIndustriesIds — pulled directly from Lusha's own
+// prospecting_company_filters(type='industries_labels') list, e.g.
+// "Restaurants" = subIndustriesId 2. This replaced the earlier free-text
+// `keywords`-only approach, which was too loose (e.g. "cafe" matched
+// "Avenues Mall" because keywords does fuzzy relevance matching across
+// company descriptions, not exact category matching — confirmed in
+// Lusha's own tool docs: "not an exact match - broad or unrelated text
+// can still return a large company population"). Keywords is kept as an
+// optional secondary refinement on top of the precise industry filter.
 app.post("/api/search-companies", async (req, res) => {
-  const { country, keywords, minSize, maxSize, page = 0, pageSize = 25 } = req.body;
+  const {
+    country,
+    mainIndustriesIds,
+    subIndustriesIds,
+    keywords,
+    minSize,
+    maxSize,
+    page = 0,
+    pageSize = 25,
+  } = req.body;
 
   if (!country) {
     return res.status(400).json({ error: "country is required" });
@@ -88,9 +103,14 @@ app.post("/api/search-companies", async (req, res) => {
     include.sizes = [sizeFilter];
   }
 
+  if (Array.isArray(mainIndustriesIds) && mainIndustriesIds.length) {
+    include.mainIndustriesIds = mainIndustriesIds;
+  }
+  if (Array.isArray(subIndustriesIds) && subIndustriesIds.length) {
+    include.subIndustriesIds = subIndustriesIds;
+  }
+
   if (keywords && keywords.trim()) {
-    // Split "coffee, retail" -> ["coffee", "retail"] to match the
-    // documented array-of-strings shape for `keywords`.
     include.keywords = keywords
       .split(",")
       .map((k) => k.trim())
