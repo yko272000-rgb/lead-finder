@@ -125,16 +125,6 @@ document.getElementById("find-contacts-btn").addEventListener("click", async () 
 
     renderContacts();
     statusEl.textContent = "";
-
-    // TEMPORARY DEBUG OUTPUT — shows exactly what Lusha sent back so we can
-    // see real field names. Safe to remove once contacts are working.
-    if (data._debug_raw) {
-      const pre = document.createElement("pre");
-      pre.style.cssText =
-        "background:#0f1712;border:1px solid #26332c;border-radius:8px;padding:12px;font-size:11px;color:#9db0a5;white-space:pre-wrap;word-break:break-all;margin-top:12px;max-height:400px;overflow:auto;";
-      pre.textContent = "DEBUG — raw Lusha response:\n" + JSON.stringify(data._debug_raw, null, 2);
-      statusEl.after(pre);
-    }
   } catch (err) {
     statusEl.textContent = "Error loading contacts: " + err.message;
   }
