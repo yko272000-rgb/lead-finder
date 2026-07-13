@@ -214,8 +214,20 @@ app.post("/api/reveal-contact", async (req, res) => {
   }
 
   try {
-    const data = await lushaFetch(`${LUSHA_BASE}/v3/contacts/enrich`, { contactIds });
-    const contacts = data.contacts || data.data || data.results || [];
+    // Confirmed via live test: body needs `ids` (not `contactIds`) and an
+    // explicit `reveal` array naming which premium field to unlock.
+    const data = await lushaFetch(`${LUSHA_BASE}/v3/contacts/enrich`, {
+      ids: contactIds,
+      reveal: ["phones"],
+    });
+
+    // Response gives a `phones` array per contact, not a single `phone`
+    // field — take the first number.
+    const contacts = (data.results || []).map((r) => ({
+      contactId: r.id,
+      phone: r.phones?.[0]?.number || null,
+    }));
+
     res.json({ contacts });
   } catch (err) {
     console.error("reveal-contact error:", err.details || err.message);
