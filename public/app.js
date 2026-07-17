@@ -1,6 +1,13 @@
 let searchResults = [];   
 let selectedDomains = new Set();
-let contactsByDomain = {}; 
+let contactsByDomain = {};
+
+// Pagination state
+const PAGE_SIZE = 25;
+let currentPage = 0;
+let lastSearchBody = null;   // remembers the filters used, so "Find More" reuses them
+let seenDomains = new Set(); // avoids showing the same company twice across pages
+let noMoreResults = false;
 
 const templateEl = document.getElementById("template");
 const savedTemplate = localStorage.getItem("fomo_wa_template");
@@ -41,52 +48,100 @@ document.getElementById("search-form").addEventListener("submit", async (e) => {
     if (kind === "sub") subIndustriesIds.push(...nums);
   });
 
+  // New filters chosen → this is a fresh search, not a "find more". Reset pagination.
+  lastSearchBody = {
+    country,
+    mainIndustriesIds,
+    subIndustriesIds,
+    keywords,
+    minSize: minSizeRaw ? minSizeRaw.trim() : null,
+    maxSize: maxSizeRaw ? maxSizeRaw.trim() : null,
+  };
+  currentPage = 0;
+  seenDomains = new Set();
+  noMoreResults = false;
+  searchResults = [];
+
   const btn = e.target.querySelector("button[type='submit']");
+  await runSearch(btn, "Searching V3 API...", { append: false });
+});
+
+document.getElementById("load-more-btn").addEventListener("click", async (e) => {
+  if (!lastSearchBody) return;
+  currentPage += 1;
+  await runSearch(e.target, "Finding more…", { append: true });
+});
+
+// Shared search call — reused by both the initial search and "Find More Companies"
+async function runSearch(btn, loadingText, { append }) {
   const originalText = btn.textContent;
   btn.disabled = true;
-  btn.textContent = "Searching V3 API...";
+  btn.textContent = loadingText;
 
   try {
     const res = await fetch("/api/search-companies", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        country,
-        mainIndustriesIds,
-        subIndustriesIds,
-        keywords,
-        minSize: minSizeRaw ? minSizeRaw.trim() : null,
-        maxSize: maxSizeRaw ? maxSizeRaw.trim() : null,
+        ...lastSearchBody,
+        page: currentPage,
+        pageSize: PAGE_SIZE,
       }),
     });
 
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Search call failed");
 
-    searchResults = data.companies || [];
-    renderCompanies();
+    const newCompanies = (data.companies || []).filter(
+      (c) => c.domain && !seenDomains.has(c.domain)
+    );
+    newCompanies.forEach((c) => seenDomains.add(c.domain));
+
+    // Fewer than a full page (or nothing new) means we've hit the end of results.
+    noMoreResults = (data.companies || []).length < PAGE_SIZE;
+
+    if (append) {
+      searchResults = searchResults.concat(newCompanies);
+    } else {
+      searchResults = newCompanies;
+    }
+
+    renderCompanies({ append });
   } catch (err) {
     alert("Error searching: " + err.message);
+    if (append) currentPage -= 1; // let them retry the same page
   } finally {
     btn.disabled = false;
     btn.textContent = originalText;
   }
-});
+}
 
-function renderCompanies() {
+function renderCompanies({ append = false } = {}) {
   const card = document.getElementById("results-card");
   const list = document.getElementById("results-list");
-  list.innerHTML = "";
-  selectedDomains.clear();
+  const countEl = document.getElementById("results-count");
+  const loadMoreBtn = document.getElementById("load-more-btn");
+
+  if (!append) {
+    list.innerHTML = "";
+    selectedDomains.clear();
+  }
 
   if (searchResults.length === 0) {
     list.innerHTML = `<div class="hint" style="padding:12px;">No companies found matching these criteria.</div>`;
+    countEl.textContent = "";
+    loadMoreBtn.hidden = true;
     card.hidden = false;
     return;
   }
 
+  // Only append rows for companies not already shown on screen.
+  const existingDomains = new Set(
+    Array.from(list.querySelectorAll("[data-domain]")).map((el) => el.dataset.domain)
+  );
+
   searchResults.forEach((c) => {
-    if (!c.domain) return; 
+    if (!c.domain || existingDomains.has(c.domain)) return;
     const row = document.createElement("div");
     row.className = "result-row";
     row.innerHTML = `
@@ -108,8 +163,15 @@ function renderCompanies() {
     list.appendChild(row);
   });
 
+  countEl.textContent = `${searchResults.length} compan${searchResults.length === 1 ? "y" : "ies"} loaded`;
+  loadMoreBtn.hidden = noMoreResults;
+  loadMoreBtn.textContent = "Find More Companies";
+  if (noMoreResults) {
+    countEl.textContent += " — that's all the matches for these filters.";
+  }
+
   card.hidden = false;
-  document.getElementById("contacts-card").hidden = true; 
+  document.getElementById("contacts-card").hidden = true;
 }
 
 // Step 2: find decision makers
