@@ -10,6 +10,7 @@
   <header class="topbar">
     <div class="topbar-inner">
       <div class="logo">LeadG <span class="logo-o">by Echo</span></div>
+      <a href="#" id="logout-link" style="float:right; font-size:.85rem;">Log out</a>
     </div>
     <p class="subtitle">Find brands → find their marketing contact → send a WhatsApp cold message</p>
   </header>
@@ -106,5 +107,12 @@
   </main>
 
   <script src="app.js"></script>
+  <script>
+    document.getElementById("logout-link").addEventListener("click", async (e) => {
+      e.preventDefault();
+      await fetch("/api/logout", { method: "POST" });
+      window.location.href = "/login.html";
+    });
+  </script>
 </body>
 </html>
