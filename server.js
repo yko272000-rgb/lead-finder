@@ -57,8 +57,13 @@ if (!EMAIL_USER || !EMAIL_PASS) {
 }
 
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true, // SSL
   auth: { user: EMAIL_USER, pass: EMAIL_PASS },
+  connectionTimeout: 15000, // 15s instead of the default (often too short on Render)
+  greetingTimeout: 15000,
+  socketTimeout: 15000,
 });
 
 // In-memory OTP store — fine for a single small internal instance.
@@ -96,7 +101,7 @@ app.post("/api/request-otp", async (req, res) => {
     });
     res.json({ ok: true });
   } catch (err) {
-    console.error("send-otp error:", err.message);
+    console.error("send-otp error:", err.code || "", err.message);
     pendingOtp = null;
     res.status(500).json({ error: "Couldn't send the code. Check email settings." });
   }
