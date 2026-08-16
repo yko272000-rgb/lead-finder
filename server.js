@@ -16,7 +16,6 @@ import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 import session from "express-session";
-import nodemailer from "nodemailer";
 import crypto from "crypto";
 
 dotenv.config();
@@ -44,27 +43,40 @@ app.use(
 );
 
 // ---------------------------------------------------------------------
-// OTP mailer setup
+// OTP mailer setup — sends via Resend's HTTPS API (not SMTP), since
+// Render's free tier blocks outbound SMTP ports.
 // ---------------------------------------------------------------------
-const EMAIL_USER = process.env.EMAIL_USER; // the account sending the code
-const EMAIL_PASS = process.env.EMAIL_PASS; // Gmail/Workspace App Password
-const OTP_RECIPIENT_EMAIL = process.env.OTP_RECIPIENT_EMAIL || EMAIL_USER; // where codes are sent
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const OTP_RECIPIENT_EMAIL = process.env.OTP_RECIPIENT_EMAIL;
 
-if (!EMAIL_USER || !EMAIL_PASS) {
+if (!RESEND_API_KEY || !OTP_RECIPIENT_EMAIL) {
   console.warn(
-    "⚠️  EMAIL_USER / EMAIL_PASS not set. Add them to Render's env vars before login codes can be sent."
+    "⚠️  RESEND_API_KEY / OTP_RECIPIENT_EMAIL not set. Add them to Render's env vars before login codes can be sent."
   );
 }
 
-const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 465,
-  secure: true, // SSL
-  auth: { user: EMAIL_USER, pass: EMAIL_PASS },
-  connectionTimeout: 15000, // 15s instead of the default (often too short on Render)
-  greetingTimeout: 15000,
-  socketTimeout: 15000,
-});
+async function sendOtpEmail(code) {
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: "LeadG by Echo <onboarding@resend.dev>",
+      to: [OTP_RECIPIENT_EMAIL],
+      subject: `Your LeadG login code: ${code}`,
+      html: `<p>Your login code is:</p><h2 style="letter-spacing:4px">${code}</h2><p>This expires in 5 minutes.</p>`,
+    }),
+  });
+
+  if (!res.ok) {
+    const details = await res.json().catch(() => ({}));
+    const err = new Error(details?.message || `Resend request failed (${res.status})`);
+    err.status = res.status;
+    throw err;
+  }
+}
 
 // In-memory OTP store — fine for a single small internal instance.
 let pendingOtp = null; // { code, expiresAt }
@@ -77,7 +89,7 @@ function generateCode() {
 }
 
 app.post("/api/request-otp", async (req, res) => {
-  if (!EMAIL_USER || !EMAIL_PASS) {
+  if (!RESEND_API_KEY || !OTP_RECIPIENT_EMAIL) {
     return res.status(500).json({ error: "Email sending isn't configured yet." });
   }
 
@@ -92,16 +104,10 @@ app.post("/api/request-otp", async (req, res) => {
   lastSentAt = now;
 
   try {
-    await transporter.sendMail({
-      from: `"LeadG by Echo" <${EMAIL_USER}>`,
-      to: OTP_RECIPIENT_EMAIL,
-      subject: `Your LeadG login code: ${code}`,
-      text: `Your login code is ${code}. It expires in 5 minutes.`,
-      html: `<p>Your login code is:</p><h2 style="letter-spacing:4px">${code}</h2><p>This expires in 5 minutes.</p>`,
-    });
+    await sendOtpEmail(code);
     res.json({ ok: true });
   } catch (err) {
-    console.error("send-otp error:", err.code || "", err.message);
+    console.error("send-otp error:", err.status || "", err.message);
     pendingOtp = null;
     res.status(500).json({ error: "Couldn't send the code. Check email settings." });
   }
