@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LeadG — Login</title>
+<link rel="stylesheet" href="style.css" />
+<style>
+  .login-wrap {
+    max-width: 380px;
+    margin: 15vh auto 0;
+    padding: 2rem;
+  }
+  .login-wrap p.hint { margin-top: .5rem; }
+  .login-wrap input[type="text"] {
+    width: 100%;
+    box-sizing: border-box;
+    font-size: 1.4rem;
+    letter-spacing: 6px;
+    text-align: center;
+    margin: 1rem 0;
+  }
+  #otp-step { display: none; }
+  #status-msg { min-height: 1.2em; margin-top: .5rem; }
+  #status-msg.error { color: #c0392b; }
+  #status-msg.success { color: #2e7d32; }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="logo">LeadG <span class="logo-o">by Echo</span></div>
+    </div>
+    <p class="subtitle">Sign in to continue</p>
+  </header>
+
+  <main>
+    <section class="card login-wrap">
+      <div id="request-step">
+        <p class="hint">Click below and a login code will be emailed to you.</p>
+        <button id="send-code-btn">Send code</button>
+      </div>
+
+      <div id="otp-step">
+        <p class="hint">Enter the 6-digit code we emailed you.</p>
+        <input type="text" id="otp-input" maxlength="6" inputmode="numeric" placeholder="••••••" />
+        <button id="verify-btn">Verify &amp; log in</button>
+        <p class="hint"><a href="#" id="resend-link">Resend code</a></p>
+      </div>
+
+      <p id="status-msg"></p>
+    </section>
+  </main>
+
+  <script src="login.js"></script>
+</body>
+</html>
